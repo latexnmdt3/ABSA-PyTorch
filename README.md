@@ -31,6 +31,30 @@ python train.py --model_name lcf_bert --dataset restaurant
 
 * Refer to [infer_example.py](./infer_example.py) for an LCF-BERT inference example.
 
+### Benchmark (time / memory / accuracy trade-off)
+
+`benchmark.py` reports latency (median / p95 / mean / std), peak GPU memory,
+throughput, accuracy and macro-F1 on the test set so you can reason about the
+trade-off between speed and quality.
+
+```sh
+# Single config — uses an already-trained checkpoint to get meaningful metrics.
+python benchmark.py \
+    --dataset restaurant \
+    --state_dict_path state_dict/lcf_bert_restaurant_val_acc_0.85 \
+    --batch_size 16 --num_runs 200
+
+# Grid sweep over focus mode / SRD / batch size, with CSV + scatter plot.
+python benchmark.py --sweep \
+    --dataset restaurant \
+    --state_dict_path state_dict/lcf_bert_restaurant_val_acc_0.85 \
+    --sweep_focus cdm cdw --sweep_srd 3 5 7 --sweep_batch_size 8 16 32 \
+    --output_csv bench.csv --output_plot bench.png
+```
+
+Without `--state_dict_path` the model head is randomly initialised, so latency /
+memory numbers are still valid but accuracy / F1 are not meaningful.
+
 ### Tips
 
 * BERT-based models are sensitive to hyperparameters (especially learning rate) on small data sets.
