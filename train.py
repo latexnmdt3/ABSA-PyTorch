@@ -20,10 +20,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 
-from data_utils import build_tokenizer, build_embedding_matrix, Tokenizer4Bert, ABSADataset
-from models import LSTM, IAN, MemNet, RAM, TD_LSTM, TC_LSTM, Cabasc, ATAE_LSTM, TNet_LF, AOA, MGAN, ASGCN, LCF_BERT
-from models.aen import CrossEntropyLoss_LSR, AEN_BERT
-from models.bert_spc import BERT_SPC
+from data_utils import Tokenizer4Bert, ABSADataset
+from models import LCF_BERT
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -34,20 +32,9 @@ class Instructor:
     def __init__(self, opt):
         self.opt = opt
 
-        if 'bert' in opt.model_name:
-            tokenizer = Tokenizer4Bert(opt.max_seq_len, opt.pretrained_bert_name)
-            bert = BertModel.from_pretrained(opt.pretrained_bert_name)
-            self.model = opt.model_class(bert, opt).to(opt.device)
-        else:
-            tokenizer = build_tokenizer(
-                fnames=[opt.dataset_file['train'], opt.dataset_file['test']],
-                max_seq_len=opt.max_seq_len,
-                dat_fname='{0}_tokenizer.dat'.format(opt.dataset))
-            embedding_matrix = build_embedding_matrix(
-                word2idx=tokenizer.word2idx,
-                embed_dim=opt.embed_dim,
-                dat_fname='{0}_{1}_embedding_matrix.dat'.format(str(opt.embed_dim), opt.dataset))
-            self.model = opt.model_class(embedding_matrix, opt).to(opt.device)
+        tokenizer = Tokenizer4Bert(opt.max_seq_len, opt.pretrained_bert_name)
+        bert = BertModel.from_pretrained(opt.pretrained_bert_name)
+        self.model = opt.model_class(bert, opt).to(opt.device)
 
         self.trainset = ABSADataset(opt.dataset_file['train'], tokenizer)
         self.testset = ABSADataset(opt.dataset_file['test'], tokenizer)
@@ -182,7 +169,7 @@ class Instructor:
 def main():
     # Hyper Parameters
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', default='bert_spc', type=str)
+    parser.add_argument('--model_name', default='lcf_bert', type=str)
     parser.add_argument('--dataset', default='laptop', type=str, help='twitter, restaurant, laptop')
     parser.add_argument('--optimizer', default='adam', type=str)
     parser.add_argument('--initializer', default='xavier_uniform_', type=str)
@@ -192,13 +179,10 @@ def main():
     parser.add_argument('--num_epoch', default=20, type=int, help='try larger number for non-BERT models')
     parser.add_argument('--batch_size', default=16, type=int, help='try 16, 32, 64 for BERT models')
     parser.add_argument('--log_step', default=10, type=int)
-    parser.add_argument('--embed_dim', default=300, type=int)
-    parser.add_argument('--hidden_dim', default=300, type=int)
     parser.add_argument('--bert_dim', default=768, type=int)
     parser.add_argument('--pretrained_bert_name', default='bert-base-uncased', type=str)
     parser.add_argument('--max_seq_len', default=85, type=int)
     parser.add_argument('--polarities_dim', default=3, type=int)
-    parser.add_argument('--hops', default=3, type=int)
     parser.add_argument('--patience', default=5, type=int)
     parser.add_argument('--device', default=None, type=str, help='e.g. cuda:0')
     parser.add_argument('--seed', default=1234, type=int, help='set seed for reproducibility')
@@ -218,20 +202,6 @@ def main():
         os.environ['PYTHONHASHSEED'] = str(opt.seed)
 
     model_classes = {
-        'lstm': LSTM,
-        'td_lstm': TD_LSTM,
-        'tc_lstm': TC_LSTM,
-        'atae_lstm': ATAE_LSTM,
-        'ian': IAN,
-        'memnet': MemNet,
-        'ram': RAM,
-        'cabasc': Cabasc,
-        'tnet_lf': TNet_LF,
-        'aoa': AOA,
-        'mgan': MGAN,
-        'asgcn': ASGCN,
-        'bert_spc': BERT_SPC,
-        'aen_bert': AEN_BERT,
         'lcf_bert': LCF_BERT,
         # default hyper-parameters for LCF-BERT model is as follws:
         # lr: 2e-5
@@ -254,20 +224,6 @@ def main():
         }
     }
     input_colses = {
-        'lstm': ['text_indices'],
-        'td_lstm': ['left_with_aspect_indices', 'right_with_aspect_indices'],
-        'tc_lstm': ['left_with_aspect_indices', 'right_with_aspect_indices', 'aspect_indices'],
-        'atae_lstm': ['text_indices', 'aspect_indices'],
-        'ian': ['text_indices', 'aspect_indices'],
-        'memnet': ['context_indices', 'aspect_indices'],
-        'ram': ['text_indices', 'aspect_indices', 'left_indices'],
-        'cabasc': ['text_indices', 'aspect_indices', 'left_with_aspect_indices', 'right_with_aspect_indices'],
-        'tnet_lf': ['text_indices', 'aspect_indices', 'aspect_boundary'],
-        'aoa': ['text_indices', 'aspect_indices'],
-        'mgan': ['text_indices', 'aspect_indices', 'left_indices'],
-        'asgcn': ['text_indices', 'aspect_indices', 'left_indices', 'dependency_graph'],
-        'bert_spc': ['concat_bert_indices', 'concat_segments_indices'],
-        'aen_bert': ['text_bert_indices', 'aspect_bert_indices'],
         'lcf_bert': ['concat_bert_indices', 'concat_segments_indices', 'text_bert_indices', 'aspect_bert_indices'],
     }
     initializers = {
