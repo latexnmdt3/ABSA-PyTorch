@@ -6,8 +6,10 @@ Backbone VI: ``VietAI/vit5-base``
 
 DOT casts ABSA as a sequence-to-sequence problem; the target string contains
 both aspect and sentiment in a fixed format like ``"<aspect>: <sentiment>"``.
-As of SPEC v1.1 the aspect is given as input, so this wrapper only needs to
-parse the sentiment back to the canonical labels in SPEC §3.
+As of SPEC v1.2 the model must emit both fields — the runner does not
+provide ``aspect`` as input. Sentiment must be one of the 3 canonical
+labels; aspect is an open string for SemEval but must be one of the 4
+canonical topics for UIT-VSFC.
 """
 from __future__ import annotations
 
@@ -36,26 +38,25 @@ class DOTPredictor:
         self.num_beams = num_beams
         # TODO: load the seq2seq model & tokenizer (T5/ViT5).
 
-    def _build_input(self, text: str, aspect: str) -> str:
+    def _build_input(self, text: str) -> str:
         # TODO: match the exact prompt format used at training time.
-        return f"absa | aspect: {aspect} | text: {text}"
+        return f"absa | text: {text}"
 
     def predict(
         self, text: str, aspect: str | None = None
     ) -> tuple[str, str, str]:
         # TODO: encode prompt, generate, decode → raw_output.
         raw = "TODO: model output"
-        return self._parse(raw, given_aspect=aspect or "")
+        return self._parse(raw)
 
     @staticmethod
-    def _parse(raw: str, given_aspect: str) -> tuple[str, str, str]:
-        # SPEC v1.1: only the sentiment after the colon needs to validate
-        # against the canonical vocabulary; the aspect slot is echoed back
-        # and overwritten by the runner.
+    def _parse(raw: str) -> tuple[str, str, str]:
+        # Expected format: ``<aspect>: <sentiment>``.
         m = re.match(r"\s*([^:]+?)\s*:\s*([a-zA-ZÀ-ỹ_]+)\s*$", raw)
         if not m:
             return PARSE_ERROR_TOKEN, PARSE_ERROR_TOKEN, raw
+        aspect_str = m.group(1).strip().lower().replace(" ", "_")
         sentiment_str = m.group(2).strip().lower()
-        if sentiment_str not in ALLOWED_SENTIMENTS:
+        if sentiment_str not in ALLOWED_SENTIMENTS or aspect_str == "":
             return PARSE_ERROR_TOKEN, PARSE_ERROR_TOKEN, raw
-        return given_aspect, sentiment_str, raw
+        return aspect_str, sentiment_str, raw

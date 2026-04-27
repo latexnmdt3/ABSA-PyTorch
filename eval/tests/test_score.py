@@ -177,18 +177,26 @@ class ScoreVSFCDemoTests(unittest.TestCase):
         # Sentiment accuracy: 5 samples, gold = [pos, neg, neutral, neg, pos]
         # pred = [pos, neg, pos, neg, __PARSE_ERROR__] → 3 correct
         self.assertAlmostEqual(m["sentiment"]["accuracy"], 3 / 5)
-        # As of SPEC v1.1 the topic is given as input — no aspect block
-        # and no joint metric.
-        self.assertNotIn("aspect", m)
-        self.assertNotIn("joint_aspect_sentiment_acc", m)
+        # SPEC v1.2: aspect/topic is predicted; aspect block + joint
+        # metric are present for ACSA. Closed-vocab → has macro_f1 too.
+        self.assertIn("aspect", m)
+        self.assertIn("accuracy", m["aspect"])
+        self.assertIn("macro_f1", m["aspect"])
+        self.assertIn("joint_aspect_sentiment_acc", m)
+        self.assertGreaterEqual(m["joint_aspect_sentiment_acc"], 0.0)
+        self.assertLessEqual(m["joint_aspect_sentiment_acc"], 1.0)
 
-    def test_score_semeval_demo_no_aspect_block(self):
+    def test_score_semeval_demo(self):
         path = EXAMPLES / "predictions_lcf_bert_semeval_demo.jsonl"
         self.assertEqual(validate_predictions_file(path), [])
         m = score_predictions(path)
         self.assertEqual(m["task"], "ATSC")
-        self.assertNotIn("aspect", m)
-        self.assertNotIn("joint_aspect_sentiment_acc", m)
+        # SPEC v1.2: aspect predicted on ATSC too. Open vocabulary →
+        # accuracy only, no macro_f1.
+        self.assertIn("aspect", m)
+        self.assertIn("accuracy", m["aspect"])
+        self.assertNotIn("macro_f1", m["aspect"])
+        self.assertIn("joint_aspect_sentiment_acc", m)
         self.assertEqual(m["n_samples"], 3)
 
 

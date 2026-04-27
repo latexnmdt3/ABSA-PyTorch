@@ -94,17 +94,20 @@ class Predictor(Protocol):
     ---------------
     - ``predict(text, aspect=None) -> (pred_aspect, pred_sentiment, raw_output)``
 
-      * As of SPEC v1.1 the aspect/topic is **always given as input** for
-        both SemEval (ATSC, aspect term) and UIT-VSFC (ACSA, topic), so
-        the runner always passes ``aspect=gold_aspect`` and the model
-        only has to predict sentiment. The model is expected to echo
-        ``aspect`` back in the returned tuple — the runner overwrites
-        the slot with the gold value anyway, so the echoed value is not
-        scored.
-      * If the model output cannot be parsed into a valid sentiment,
-        return ``("__PARSE_ERROR__", "__PARSE_ERROR__", raw_output)`` —
-        the runner will count this as a wrong prediction (locked
-        decision #2).
+      * As of SPEC v1.2 the model must predict **both** the aspect and
+        the sentiment for both datasets. The runner does not provide
+        the gold aspect — ``aspect`` is currently always ``None``.
+        - For SemEval (ATSC): predict an aspect-term string (open
+          vocabulary; ideally a substring of ``text``). It is compared
+          to ``gold.aspect`` by exact string match.
+        - For UIT-VSFC (ACSA): predict one of the 4 closed topic
+          categories: ``lecturer`` / ``training_program`` /
+          ``facility`` / ``others``.
+      * If the model output cannot be parsed into a valid
+        ``(aspect, sentiment)`` pair, return
+        ``("__PARSE_ERROR__", "__PARSE_ERROR__", raw_output)`` — the
+        runner will count this as a wrong prediction (locked decision
+        #2).
 
     Optional methods
     ----------------
@@ -309,14 +312,13 @@ def run_evaluation(
     if warmup_n > 0:
         _warmup_fn = getattr(predictor, "warmup", None)
         for sample in samples[:warmup_n]:
-            # As of SPEC v1.1 the aspect/topic is always given as input for
-            # both ATSC (SemEval aspect term) and ACSA (UIT-VSFC topic). The
-            # model only predicts sentiment.
-            aspect_arg = sample.gold_aspect
+            # As of SPEC v1.2 the model predicts both aspect and sentiment
+            # for both datasets, so the runner does not provide the gold
+            # aspect.
             if callable(_warmup_fn):
                 _warmup_fn(sample.text)
             else:
-                predictor.predict(sample.text, aspect=aspect_arg)
+                predictor.predict(sample.text, aspect=None)
 
     # Reset GPU mem stats AFTER warmup so warmup allocations don't dominate.
     _reset_gpu_mem()
@@ -325,10 +327,10 @@ def run_evaluation(
 
     with pred_path.open("w", encoding="utf-8") as fh:
         for i, sample in enumerate(samples, start=1):
-            aspect_arg = sample.gold_aspect
+            # SPEC v1.2: the model predicts both aspect and sentiment.
             try:
                 pa, ps, raw, latency_ms = _timed_predict(
-                    predictor, sample.text, aspect_arg
+                    predictor, sample.text, None
                 )
             except Exception as exc:  # noqa: BLE001 -- fail-soft per-sample
                 # Per SPEC §2 decision #2: a failure is a wrong prediction,
@@ -347,11 +349,9 @@ def run_evaluation(
             # token when parse_ok is false.
             if not parse_ok:
                 pa, ps = PARSE_ERROR, PARSE_ERROR
-            # The aspect/topic is given by the task definition (SPEC v1.1),
-            # so the model is not trusted to predict it: force pred.aspect
-            # back to gold whenever parsing succeeded.
-            if parse_ok:
-                pa = sample.gold_aspect
+            # SPEC v1.2: do not force pred.aspect back to gold — the model
+            # is responsible for predicting both fields and the evaluator
+            # scores aspect and joint accuracy from what was returned.
             rec = _make_record(sample, predictor, pa, ps, raw, parse_ok, latency_ms)
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
             latencies_ms.append(latency_ms)

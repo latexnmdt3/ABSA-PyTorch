@@ -1,6 +1,6 @@
 # ABSA Survey — Unified Output Specification
 
-> Version: 1.1 (updated 2026-04-27)
+> Version: 1.2 (updated 2026-04-27)
 >
 > This document is the **single source of truth** for how every method in the
 > survey reports predictions, metrics, and efficiency numbers. Every method
@@ -8,9 +8,15 @@
 > single evaluator can produce the comparison tables.
 >
 > Changelog:
-> - **v1.1**: UIT-VSFC is now sentiment-only — the topic is given as input
->   (same shape as SemEval ATSC), so the model only predicts sentiment. Aspect
->   metrics and joint (aspect, sentiment) accuracy are no longer reported.
+> - **v1.2**: Both datasets now require the model to predict **both**
+>   `aspect` and `sentiment`. SemEval becomes "aspect-term + sentiment"
+>   prediction (open-vocabulary aspect strings); UIT-VSFC becomes full
+>   ACSA (closed-set 4-way topic + 3-way sentiment). Joint (aspect,
+>   sentiment) accuracy is reported for both datasets, alongside aspect
+>   and sentiment metrics. Reverts the v1.1 simplification.
+> - **v1.1** (superseded): UIT-VSFC was sentiment-only; topic was given
+>   as input.
+> - **v1.0**: Initial spec.
 
 ## 1. Methods and datasets in scope
 
@@ -26,12 +32,14 @@ Datasets:
 
 - **SemEval-2014 (English)** — task **ATSC** (Aspect Term Sentiment
   Classification) on Restaurant + Laptop reviews. ~6,000 sentences after the
-  `Conflict` label is removed. 3 sentiment classes.
+  `Conflict` label is removed. The model **predicts the aspect term as a
+  free-form string** (open vocabulary) and one of 3 sentiment classes for
+  that aspect.
 - **UIT-VSFC (Vietnamese)** — task **ACSA single-label** (Aspect Category
   Sentiment Analysis) on student feedback. ~16,175 sentences. Each sentence
-  has exactly one `(topic, sentiment)` pair, and the topic is **given to the
-  model as input** — only sentiment is predicted (same shape as SemEval ATSC).
-  - topics (given as input): `lecturer` (0), `training_program` (1),
+  has exactly one `(topic, sentiment)` pair. The model **predicts both**
+  the topic (closed-vocabulary, 4 classes) and the sentiment.
+  - topic vocabulary: `lecturer` (0), `training_program` (1),
     `facility` (2), `others` (3)
   - sentiments: `negative` (0), `neutral` (1), `positive` (2)
 
@@ -39,7 +47,7 @@ Datasets:
 
 | # | Item                              | Decision                                                                                  |
 |---|-----------------------------------|-------------------------------------------------------------------------------------------|
-| 1 | Headline metric                   | **Sentiment Accuracy + Sentiment Macro-F1** for both datasets. No aspect or joint metrics. |
+| 1 | Headline metric                   | For each dataset, report **Aspect metric**, **Sentiment Accuracy + Macro-F1**, and **Joint (aspect, sentiment) Accuracy**. No combined ranking. |
 | 2 | Generative parse failures         | `parse_ok=false` → predicted aspect/sentiment set to `__PARSE_ERROR__` and counted as **wrong**. No retries, no skips. |
 | 3 | Hardware for efficiency reporting | **1× T4 16GB**, batch size **1**, **fp16**. (Closer to a real deployment than A100.)      |
 | 4 | Setting for every method          | Every method **must fine-tune on the corresponding training set**. LLM-Reasoning is fine-tuned with QLoRA; **no zero-shot or few-shot rows** in the comparison tables. |
@@ -53,8 +61,8 @@ Both datasets are normalised to a single contract:
 
 | Dataset            | `aspect` field         | Aspect comes from   | Sentiment label space                                |
 |--------------------|------------------------|---------------------|------------------------------------------------------|
-| SemEval-2014 (EN)  | aspect term string     | **given in input**, copied verbatim into the output | `positive` / `neutral` / `negative`               |
-| UIT-VSFC (VI)      | one of 4 topic strings | **given in input**, copied verbatim into the output | `positive` / `neutral` / `negative`               |
+| SemEval-2014 (EN)  | aspect term string     | **predicted by model** (open vocabulary; substring of `text`) | `positive` / `neutral` / `negative`        |
+| UIT-VSFC (VI)      | one of 4 topic strings | **predicted by model** (closed vocabulary)                    | `positive` / `neutral` / `negative`        |
 
 Sentiment normalisation:
 
@@ -127,6 +135,11 @@ results/metrics/{method}_{dataset}.json
     "macro_f1": 0.811,
     "f1_per_class": {"positive": 0.88, "neutral": 0.71, "negative": 0.84}
   },
+  "aspect": {
+    "accuracy": 0.913,
+    "macro_f1": 0.892
+  },
+  "joint_aspect_sentiment_acc": 0.795,
   "parse_failure_rate": 0.012,
   "efficiency": {
     "params_million": 247,
@@ -150,8 +163,12 @@ results/metrics/{method}_{dataset}.json
 
 Notes:
 
-- Only sentiment metrics are reported (the topic / aspect term is always
-  given as input in v1.1, see §3). No aspect block, no joint accuracy.
+- The `aspect` block always contains `accuracy` (exact-string match
+  against `gold.aspect`). For UIT-VSFC (closed 4-way vocabulary) it also
+  contains `macro_f1` and `f1_per_class`. For SemEval ATSC the aspect
+  vocabulary is open, so only `accuracy` is reported.
+- `joint_aspect_sentiment_acc` is the fraction of samples where **both**
+  the predicted aspect and the predicted sentiment match the gold pair.
 - `parse_failure_rate` is `(# samples with parse_ok=false) / n_samples`.
 - `efficiency.*` is filled in by the runner (not the evaluator) and merged
   into the metrics JSON. `eval/score.py --efficiency path/to/eff.json` is the
@@ -190,10 +207,9 @@ class DOTPredictor:
         ...  # load model
 
     def predict(self, text, aspect=None) -> tuple[str, str, str]:
-        # ``aspect`` is always provided by the runner (the topic for VSFC,
-        # the aspect term for SemEval). The method only needs to predict
-        # sentiment; you may echo the input aspect back as the first slot
-        # — the runner will overwrite it with the gold aspect anyway.
+        # The method must predict BOTH the aspect/topic and the sentiment
+        # (SPEC v1.2). The runner does not provide ``aspect`` — it is
+        # passed only as a hint when available (currently always None).
         # Return (pred_aspect, pred_sentiment, raw_output).
         ...
 ```
@@ -226,10 +242,11 @@ python -m eval.score \
     --efficiency  results/efficiency/dot_vsfc.json
 ```
 
-`eval/score.py` reads predictions, computes sentiment accuracy / macro-F1 /
-per-class-F1 / parse-failure-rate, optionally merges in an efficiency block,
-and writes the final metrics file. Method authors **must not** compute these
-numbers themselves.
+`eval/score.py` reads predictions, computes sentiment accuracy /
+macro-F1 / per-class-F1, aspect accuracy (plus macro-F1 for UIT-VSFC),
+joint (aspect, sentiment) accuracy, and parse-failure-rate; optionally
+merges in an efficiency block; and writes the final metrics file.
+Method authors **must not** compute these numbers themselves.
 
 `eval/schema.py` provides `validate_predictions_file(path)` and is run by
 both `score.py` and `evaluate.py` before scoring. Any schema violation is
@@ -241,13 +258,16 @@ Generated by `eval/aggregate_tables.py` (TBD) from the JSON metrics files.
 
 ### Table A — Accuracy
 
-| # | Method         | Year | Paradigm            | SemEval-14 Acc | SemEval-14 Macro-F1 | UIT-VSFC Acc | UIT-VSFC Macro-F1 |
-|---|----------------|------|---------------------|----------------|---------------------|--------------|-------------------|
-| 1 | LCF-BERT       | 2019 | Discriminative      | …              | …                   | …            | …                 |
-| 2 | InstructABSA   | 2023 | Instruction Tuning  | …              | …                   | …            | …                 |
-| 3 | SSIN           | 2024 | Graph (Syn + Sem)   | …              | …                   | …            | …                 |
-| 4 | DOT            | 2025 | Generative Seq2Seq  | …              | …                   | …            | …                 |
-| 5 | LLM-Reasoning  | 2025 | LLM + QLoRA + CoT   | …              | …                   | …            | …                 |
+For each dataset, three columns: aspect accuracy (Asp-Acc), sentiment
+macro-F1 (Sent-F1), and joint (aspect, sentiment) accuracy (Joint-Acc).
+
+| # | Method         | Year | Paradigm            | SemEval-14 Asp-Acc | SemEval-14 Sent-F1 | SemEval-14 Joint-Acc | UIT-VSFC Asp-Acc | UIT-VSFC Sent-F1 | UIT-VSFC Joint-Acc |
+|---|----------------|------|---------------------|--------------------|--------------------|----------------------|------------------|------------------|--------------------|
+| 1 | LCF-BERT       | 2019 | Discriminative      | …                  | …                  | …                    | …                | …                | …                  |
+| 2 | InstructABSA   | 2023 | Instruction Tuning  | …                  | …                  | …                    | …                | …                | …                  |
+| 3 | SSIN           | 2024 | Graph (Syn + Sem)   | …                  | …                  | …                    | …                | …                | …                  |
+| 4 | DOT            | 2025 | Generative Seq2Seq  | …                  | …                  | …                    | …                | …                | …                  |
+| 5 | LLM-Reasoning  | 2025 | LLM + QLoRA + CoT   | …                  | …                  | …                    | …                | …                | …                  |
 
 ### Table B — Efficiency (1× T4 16GB, fp16, batch=1)
 

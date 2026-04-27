@@ -1,13 +1,17 @@
 """Single evaluator for the ABSA survey.
 
 Reads a JSONL prediction file produced by any method, validates it against
-the schema in :mod:`eval.schema`, computes the canonical metrics (sentiment
-accuracy, macro-F1, per-class F1, parse-failure rate), optionally merges
-an external ``efficiency.json`` block, and writes the resulting metrics
-JSON to disk.
+the schema in :mod:`eval.schema`, computes the canonical metrics
+(sentiment accuracy / macro-F1 / per-class F1, aspect accuracy — plus
+macro-F1 for UIT-VSFC's closed topic vocabulary, joint
+``(aspect, sentiment)`` accuracy, and parse-failure rate), optionally
+merges an external ``efficiency.json`` block, and writes the resulting
+metrics JSON to disk.
 
-As of SPEC v1.1 the aspect/topic is given as input for both ATSC and
-ACSA, so this evaluator only scores sentiment.
+SPEC v1.2: aspect/topic is predicted by the model for both datasets.
+SemEval aspect strings are open-vocabulary so only exact-match accuracy
+is reported there; UIT-VSFC topics are closed-vocabulary so we also
+report macro-F1.
 
 Use this script (and only this script) to score every method's predictions —
 see ``docs/SURVEY_SPEC.md`` §6.
@@ -120,11 +124,15 @@ def score_predictions(predictions_path: str | Path) -> dict[str, Any]:
         "parse_failure_rate": parse_fail / n,
     }
 
-    # As of SPEC v1.1 the aspect/topic is given as input for both tasks, so
-    # we still sanity-check the gold UIT-VSFC topic vocabulary but do not
-    # produce aspect or joint metrics.
+    # SPEC v1.2: aspect / topic is predicted by the model on both datasets.
+    # For UIT-VSFC the topic is closed-vocab → accuracy + macro-F1.
+    # For SemEval the aspect term is open-vocab → accuracy only.
+    asp_true = [s["gold"]["aspect"] for s in samples]
+    asp_pred = [s["pred"]["aspect"] for s in samples]
+
+    aspect_block: dict[str, Any] = {"accuracy": _accuracy(asp_true, asp_pred)}
+
     if task == "ACSA":
-        asp_true = [s["gold"]["aspect"] for s in samples]
         bad_gold = {a for a in asp_true if a not in ALLOWED_VSFC_ASPECTS} - {
             PARSE_ERROR_TOKEN
         }
@@ -132,6 +140,20 @@ def score_predictions(predictions_path: str | Path) -> dict[str, Any]:
             raise ValueError(
                 f"gold aspect labels outside the UIT-VSFC vocabulary: {sorted(bad_gold)}"
             )
+        aspect_block["macro_f1"] = _macro_f1(
+            asp_true, asp_pred, VSFC_ASPECT_LABELS
+        )
+        aspect_block["f1_per_class"] = _f1_per_class(
+            asp_true, asp_pred, VSFC_ASPECT_LABELS
+        )
+
+    metrics["aspect"] = aspect_block
+    metrics["joint_aspect_sentiment_acc"] = sum(
+        1
+        for s in samples
+        if s["gold"]["aspect"] == s["pred"]["aspect"]
+        and s["gold"]["sentiment"] == s["pred"]["sentiment"]
+    ) / n
 
     return metrics
 
