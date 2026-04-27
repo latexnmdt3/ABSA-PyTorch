@@ -191,6 +191,42 @@ class RunEvaluationVSFCTests(unittest.TestCase):
         # wrong labels even when it doesn't crash.
         self.assertLess(metrics["sentiment"]["accuracy"], 1.0)
 
+    def test_partial_parse_error_is_normalised(self):
+        """A predictor that returns one PARSE_ERROR and one valid label must
+        not crash the runner — both fields must be normalised to
+        PARSE_ERROR before the record is written, otherwise the post-write
+        schema validation rejects the file.
+        """
+
+        class _PartialErrorPredictor:
+            method = "Fake-Partial"
+            paradigm = "Discriminative"
+            backbone = "fake/partial"
+
+            def predict(self_inner, text, aspect=None):
+                # Return aspect cleanly but PARSE_ERROR for sentiment — i.e.
+                # the kind of partial failure a generative-model wrapper can
+                # emit when it parses out the topic but not the sentiment.
+                return ("lecturer", "__PARSE_ERROR__", "raw")
+
+        metrics = run_evaluation(
+            _PartialErrorPredictor(),
+            RunConfig(test_set=self.DEMO, output_dir=self.outdir, warmup=0),
+            progress_every=0,
+        )
+        # Every prediction is a partial PARSE_ERROR → all 8 must be counted
+        # as parse failures.
+        self.assertAlmostEqual(metrics["parse_failure_rate"], 1.0)
+        self.assertAlmostEqual(metrics["sentiment"]["accuracy"], 0.0)
+
+        # All written records must have BOTH pred fields normalised.
+        pred_path = self.outdir / "predictions" / "fake_partial_vsfc.jsonl"
+        for line in pred_path.read_text().splitlines():
+            rec = json.loads(line)
+            self.assertFalse(rec["parse_ok"])
+            self.assertEqual(rec["pred"]["aspect"], "__PARSE_ERROR__")
+            self.assertEqual(rec["pred"]["sentiment"], "__PARSE_ERROR__")
+
 
 class RunEvaluationSemEvalTests(unittest.TestCase):
     DEMO = REPO_ROOT / "datasets" / "unified" / "semeval14_restaurant_test_demo.jsonl"
