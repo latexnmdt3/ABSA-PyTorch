@@ -334,6 +334,13 @@ def run_evaluation(
                     0.0,
                 )
             parse_ok = pa != PARSE_ERROR and ps != PARSE_ERROR
+            # If a predictor returns a partial parse error (one field is
+            # PARSE_ERROR, the other isn't), normalise both to PARSE_ERROR so
+            # the resulting record passes schema validation. The schema
+            # requires both pred.aspect and pred.sentiment to equal the
+            # token when parse_ok is false.
+            if not parse_ok:
+                pa, ps = PARSE_ERROR, PARSE_ERROR
             # ATSC: model must echo the gold aspect; if it didn't, force it
             # back so the aspect column doesn't pollute the join metric (the
             # gold aspect is given by the task definition).
