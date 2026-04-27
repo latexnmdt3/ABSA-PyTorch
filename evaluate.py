@@ -94,14 +94,17 @@ class Predictor(Protocol):
     ---------------
     - ``predict(text, aspect=None) -> (pred_aspect, pred_sentiment, raw_output)``
 
-      * For SemEval (ATSC) the runner passes the gold aspect term in
-        ``aspect``; the model only has to predict sentiment, but is still
-        expected to **echo the aspect back** in the returned tuple.
-      * For UIT-VSFC (ACSA) ``aspect`` is ``None`` and the model must predict
-        both the topic and the sentiment.
-      * If the model output cannot be parsed into a valid pair, return
-        ``("__PARSE_ERROR__", "__PARSE_ERROR__", raw_output)`` — the runner
-        will count this as a wrong prediction (locked decision #2).
+      * As of SPEC v1.1 the aspect/topic is **always given as input** for
+        both SemEval (ATSC, aspect term) and UIT-VSFC (ACSA, topic), so
+        the runner always passes ``aspect=gold_aspect`` and the model
+        only has to predict sentiment. The model is expected to echo
+        ``aspect`` back in the returned tuple — the runner overwrites
+        the slot with the gold value anyway, so the echoed value is not
+        scored.
+      * If the model output cannot be parsed into a valid sentiment,
+        return ``("__PARSE_ERROR__", "__PARSE_ERROR__", raw_output)`` —
+        the runner will count this as a wrong prediction (locked
+        decision #2).
 
     Optional methods
     ----------------
