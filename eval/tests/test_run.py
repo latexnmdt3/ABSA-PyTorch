@@ -155,9 +155,11 @@ class RunEvaluationVSFCTests(unittest.TestCase):
         self.assertEqual(metrics["method"], "Fake-Perfect")
         self.assertEqual(metrics["n_samples"], 8)
         self.assertAlmostEqual(metrics["sentiment"]["accuracy"], 1.0)
-        # SPEC v1.1: topic given as input → no aspect block / joint metric.
-        self.assertNotIn("aspect", metrics)
-        self.assertNotIn("joint_aspect_sentiment_acc", metrics)
+        # SPEC v1.2: model predicts both aspect & sentiment; perfect
+        # predictor → perfect aspect + joint accuracy.
+        self.assertAlmostEqual(metrics["aspect"]["accuracy"], 1.0)
+        self.assertAlmostEqual(metrics["aspect"]["macro_f1"], 1.0)
+        self.assertAlmostEqual(metrics["joint_aspect_sentiment_acc"], 1.0)
         self.assertEqual(metrics["parse_failure_rate"], 0.0)
 
         # Efficiency block populated by the runner.
@@ -236,34 +238,42 @@ class RunEvaluationSemEvalTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.outdir = Path(self.tmp.name)
 
-    def test_atsc_drops_aspect_block(self):
-        # ATSC: a single sentence may have multiple aspects (different rows).
-        # Look up by (text, aspect) — the aspect is provided by the runner.
-        gold = {
-            (s.text, s.gold_aspect): s.gold_sentiment
-            for s in load_test_set(self.DEMO)
-        }
+    def test_atsc_aspect_and_joint_metrics(self):
+        # SPEC v1.2: the model must predict the aspect term too. The
+        # runner does not provide ``aspect`` (it's always None), so
+        # this oracle predictor looks up the gold pair by ``text``
+        # alone — we just want to verify that the aspect block and
+        # joint accuracy are computed for ATSC.
+        gold_by_text: dict[str, tuple[str, str]] = {}
+        for s in load_test_set(self.DEMO):
+            # If the same text has multiple aspects, the last one wins
+            # for this fake — metrics will be < 1.0 in that case.
+            gold_by_text[s.text] = (s.gold_aspect, s.gold_sentiment)
 
-        # For ATSC the runner forces pred.aspect = gold.aspect, so even if the
-        # predictor returns garbage in the aspect slot, joint == sentiment acc.
-        class EchoPredictor:
-            method = "Fake-Echo"
+        class OraclePredictor:
+            method = "Fake-Oracle"
             paradigm = "Discriminative"
-            backbone = "fake/echo"
+            backbone = "fake/oracle"
 
             def predict(self_inner, text, aspect=None):
-                self.assertIsNotNone(aspect)  # ATSC always provides aspect
-                return (aspect, gold[(text, aspect)], "raw")
+                # SPEC v1.2: the runner does not pass ``aspect``.
+                self.assertIsNone(aspect)
+                a, s_ = gold_by_text[text]
+                return (a, s_, "raw")
 
         metrics = run_evaluation(
-            EchoPredictor(),
+            OraclePredictor(),
             RunConfig(test_set=self.DEMO, output_dir=self.outdir, warmup=0),
             progress_every=0,
         )
         self.assertEqual(metrics["task"], "ATSC")
-        self.assertNotIn("aspect", metrics)
-        self.assertNotIn("joint_aspect_sentiment_acc", metrics)
-        self.assertAlmostEqual(metrics["sentiment"]["accuracy"], 1.0)
+        # ATSC aspect vocabulary is open → accuracy only, no macro_f1.
+        self.assertIn("aspect", metrics)
+        self.assertIn("accuracy", metrics["aspect"])
+        self.assertNotIn("macro_f1", metrics["aspect"])
+        self.assertIn("joint_aspect_sentiment_acc", metrics)
+        self.assertGreaterEqual(metrics["joint_aspect_sentiment_acc"], 0.0)
+        self.assertLessEqual(metrics["joint_aspect_sentiment_acc"], 1.0)
 
 
 if __name__ == "__main__":

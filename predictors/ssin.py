@@ -34,8 +34,11 @@ class SSINPredictor:
     def predict(
         self, text: str, aspect: str | None = None
     ) -> tuple[str, str, str]:
-        # TODO: build the syntactic + semantic graphs, run the model, take
-        # argmax over the sentiment head. As of SPEC v1.1 the aspect/topic
-        # is given as input for both ATSC and ACSA, so no topic head is
-        # needed — return (aspect, sentiment, raw).
+        # TODO: build the syntactic + semantic graphs, run the model, then
+        # return BOTH the predicted aspect/topic and the predicted
+        # sentiment as required by SPEC v1.2.
+        # - SemEval (ATSC): predict aspect term as an open string.
+        # - UIT-VSFC (ACSA): predict topic from the closed 4-way set.
+        # Add a topic-classification head if the original SSIN
+        # implementation only has a sentiment head.
         raise NotImplementedError("Wire SSIN inference here.")

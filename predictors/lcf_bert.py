@@ -38,13 +38,24 @@ class LCFBertPredictor:
     def predict(
         self, text: str, aspect: str | None = None
     ) -> tuple[str, str, str]:
-        """Discriminative model: aspect/topic is always given as input
-        (SPEC v1.1) for both ATSC and ACSA. The model only predicts
-        sentiment.
+        """Discriminative model: must predict BOTH aspect/topic and
+        sentiment (SPEC v1.2).
+
+        - For SemEval (ATSC): predict the aspect term as a free-form
+          string (open vocabulary; ideally a substring of ``text``).
+        - For UIT-VSFC (ACSA): predict one of the 4 closed topic
+          categories ``lecturer`` / ``training_program`` / ``facility`` /
+          ``others``.
+
+        The original LCF-BERT only has a sentiment head, so wiring this
+        into v1.2 requires either (a) adding a topic-classification head
+        on top of the same encoder for UIT-VSFC, or (b) running a small
+        upstream aspect-extraction module for SemEval. Pick whichever
+        matches the experimental setup; this skeleton just documents
+        the contract.
         """
-        # TODO(latex): tokenize (text, aspect), run LCF-BERT, argmax over
-        # the 3-class sentiment head, map int → string per SPEC §3, and
-        # return (aspect, sentiment, raw). The runner overwrites the
-        # aspect slot with the gold value, so echoing back ``aspect`` is
-        # fine.
+        # TODO(latex): tokenize the text, run LCF-BERT (with the extra
+        # aspect/topic head) → predicted aspect string + sentiment int,
+        # map int → string per SPEC §3, and return
+        # (pred_aspect, pred_sentiment, raw).
         raise NotImplementedError("Wire LCF-BERT inference here.")
