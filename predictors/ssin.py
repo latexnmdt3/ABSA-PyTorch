@@ -35,5 +35,7 @@ class SSINPredictor:
         self, text: str, aspect: str | None = None
     ) -> tuple[str, str, str]:
         # TODO: build the syntactic + semantic graphs, run the model, take
-        # argmax over the sentiment head (and the topic head for ACSA).
+        # argmax over the sentiment head. As of SPEC v1.1 the aspect/topic
+        # is given as input for both ATSC and ACSA, so no topic head is
+        # needed — return (aspect, sentiment, raw).
         raise NotImplementedError("Wire SSIN inference here.")

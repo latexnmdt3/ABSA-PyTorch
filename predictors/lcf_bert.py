@@ -38,11 +38,13 @@ class LCFBertPredictor:
     def predict(
         self, text: str, aspect: str | None = None
     ) -> tuple[str, str, str]:
-        """Discriminative model: aspect is given (ATSC) or there is no aspect
-        prediction needed (we return the topic vocabulary mapping for ACSA via
-        a separate head — left as a TODO).
+        """Discriminative model: aspect/topic is always given as input
+        (SPEC v1.1) for both ATSC and ACSA. The model only predicts
+        sentiment.
         """
-        # TODO(latex): tokenize text+aspect, run LCF-BERT, argmax over the
-        # 3-class sentiment head. For UIT-VSFC, run a second head trained for
-        # the 4-way topic classification. Map int → string per SPEC §3.
+        # TODO(latex): tokenize (text, aspect), run LCF-BERT, argmax over
+        # the 3-class sentiment head, map int → string per SPEC §3, and
+        # return (aspect, sentiment, raw). The runner overwrites the
+        # aspect slot with the gold value, so echoing back ``aspect`` is
+        # fine.
         raise NotImplementedError("Wire LCF-BERT inference here.")

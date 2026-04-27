@@ -4,15 +4,13 @@ Owner: TODO assign teammate.
 Backbone EN: ``allenai/tk-instruct-base-def-pos``
 Backbone VI: ``google/mt5-base``
 
-The model is instruction-tuned, so its raw output is free-form text. The
-``predict`` method must parse it back into the ``(aspect, sentiment)`` pair
-defined in SPEC §3. If parsing fails, return
-``("__PARSE_ERROR__", "__PARSE_ERROR__", raw)`` — the runner counts this as
-wrong.
+The model is instruction-tuned, so its raw output is free-form text. As of
+SPEC v1.1 the aspect/topic is given to the model as input, so ``predict``
+only needs to parse the sentiment back from the raw output. If parsing
+fails, return ``("__PARSE_ERROR__", "__PARSE_ERROR__", raw)`` — the
+runner counts this as wrong.
 """
 from __future__ import annotations
-
-import re
 
 from eval.schema import PARSE_ERROR_TOKEN
 
@@ -22,14 +20,6 @@ _SENTIMENT_ALIASES = {
     "negative": "negative", "neg": "negative", "tiêu cực": "negative",
     "neutral": "neutral", "neu": "neutral", "trung tính": "neutral",
 }
-_VSFC_ASPECT_ALIASES = {
-    "lecturer": "lecturer", "giảng viên": "lecturer",
-    "training_program": "training_program", "training program": "training_program",
-    "chương trình": "training_program", "chương trình đào tạo": "training_program",
-    "facility": "facility", "cơ sở vật chất": "facility",
-    "others": "others", "khác": "others",
-}
-
 
 class InstructABSAPredictor:
     method = "InstructABSA"
@@ -49,39 +39,28 @@ class InstructABSAPredictor:
         self.max_new_tokens = max_new_tokens
         # TODO: load the seq2seq model & tokenizer (e.g. AutoModelForSeq2SeqLM).
 
-    def _build_prompt(self, text: str, aspect: str | None) -> str:
+    def _build_prompt(self, text: str, aspect: str) -> str:
         # TODO: replace with the exact instruction prompt format used during
         # fine-tuning. The SPEC does not constrain the prompt — only the
         # output parsing.
-        if aspect is not None:
-            return f"What is the sentiment toward '{aspect}' in: {text}"
-        return f"Identify the topic and sentiment of: {text}"
+        return f"What is the sentiment toward '{aspect}' in: {text}"
 
     def predict(
         self, text: str, aspect: str | None = None
     ) -> tuple[str, str, str]:
         # TODO: run model.generate(...) and capture the decoded string.
         raw = "TODO: model output"  # noqa: F841
-
-        return self._parse(raw, gold_aspect=aspect)
+        return self._parse(raw, given_aspect=aspect or "")
 
     @staticmethod
-    def _parse(raw: str, gold_aspect: str | None) -> tuple[str, str, str]:
+    def _parse(raw: str, given_aspect: str) -> tuple[str, str, str]:
+        # SPEC v1.1: only sentiment needs to be parsed. The runner overrides
+        # ``aspect`` with the gold value, so the first slot is just echoed.
         text = raw.lower().strip()
         sentiment = next(
             (canon for alias, canon in _SENTIMENT_ALIASES.items() if alias in text),
             None,
         )
-        if gold_aspect is not None:
-            return (gold_aspect, sentiment or PARSE_ERROR_TOKEN, raw) if sentiment else (
-                PARSE_ERROR_TOKEN,
-                PARSE_ERROR_TOKEN,
-                raw,
-            )
-        aspect = next(
-            (canon for alias, canon in _VSFC_ASPECT_ALIASES.items() if alias in text),
-            None,
-        )
-        if aspect and sentiment:
-            return aspect, sentiment, raw
-        return PARSE_ERROR_TOKEN, PARSE_ERROR_TOKEN, raw
+        if sentiment is None:
+            return PARSE_ERROR_TOKEN, PARSE_ERROR_TOKEN, raw
+        return given_aspect, sentiment, raw

@@ -177,11 +177,10 @@ class ScoreVSFCDemoTests(unittest.TestCase):
         # Sentiment accuracy: 5 samples, gold = [pos, neg, neutral, neg, pos]
         # pred = [pos, neg, pos, neg, __PARSE_ERROR__] → 3 correct
         self.assertAlmostEqual(m["sentiment"]["accuracy"], 3 / 5)
-        # Joint accuracy: pairs match for samples 1, 2 only → 2/5
-        self.assertAlmostEqual(m["joint_aspect_sentiment_acc"], 2 / 5)
-        # Aspect block must be present for ACSA
-        self.assertIn("aspect", m)
-        self.assertIn("f1_per_class", m["aspect"])
+        # As of SPEC v1.1 the topic is given as input — no aspect block
+        # and no joint metric.
+        self.assertNotIn("aspect", m)
+        self.assertNotIn("joint_aspect_sentiment_acc", m)
 
     def test_score_semeval_demo_no_aspect_block(self):
         path = EXAMPLES / "predictions_lcf_bert_semeval_demo.jsonl"
