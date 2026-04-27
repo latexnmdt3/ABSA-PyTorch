@@ -91,6 +91,64 @@ class SchemaTests(unittest.TestCase):
         errs = validate_prediction(rec)
         self.assertTrue(any("latency_ms must be >= 0" in e for e in errs), errs)
 
+    def test_non_dict_pred_does_not_crash(self):
+        # Regression: a non-dict truthy ``pred`` (e.g. a string) used to crash
+        # with AttributeError because ``rec.get('pred', {}) or {}`` short-
+        # circuits on truthy values, then ``.get()`` was called on the str.
+        rec = _good_record(pred="positive")
+        errs = validate_prediction(rec)
+        self.assertTrue(
+            any("pred: must be an object" in e for e in errs),
+            errs,
+        )
+        # And ditto when parse_ok is False — must not crash.
+        rec_false = _good_record(pred="__PARSE_ERROR__", parse_ok=False)
+        errs_false = validate_prediction(rec_false)
+        self.assertTrue(
+            any("pred: must be an object" in e for e in errs_false),
+            errs_false,
+        )
+
+    def test_non_dict_pred_list_does_not_crash(self):
+        rec = _good_record(pred=["lecturer", "positive"], parse_ok=True)
+        errs = validate_prediction(rec)
+        self.assertTrue(
+            any("pred: must be an object" in e for e in errs),
+            errs,
+        )
+
+    def test_gold_cannot_be_parse_error_sentiment(self):
+        # __PARSE_ERROR__ is only valid for ``pred`` (when parse_ok=false).
+        # A gold record with __PARSE_ERROR__ would silently distort metrics,
+        # so the validator must reject it.
+        rec = _good_record(
+            gold={"aspect": "lecturer", "sentiment": "__PARSE_ERROR__"}
+        )
+        errs = validate_prediction(rec)
+        self.assertTrue(
+            any("gold.sentiment invalid" in e for e in errs),
+            errs,
+        )
+
+    def test_gold_cannot_be_parse_error_aspect(self):
+        rec = _good_record(
+            gold={"aspect": "__PARSE_ERROR__", "sentiment": "positive"}
+        )
+        errs = validate_prediction(rec)
+        self.assertTrue(
+            any("gold.aspect invalid for UIT-VSFC" in e for e in errs),
+            errs,
+        )
+
+    def test_pred_can_be_parse_error_when_parse_ok_false(self):
+        # The opposite side: pred *is* allowed to use __PARSE_ERROR__ when
+        # parse_ok=false. Already covered above, but explicit here for clarity.
+        rec = _good_record(
+            parse_ok=False,
+            pred={"aspect": "__PARSE_ERROR__", "sentiment": "__PARSE_ERROR__"},
+        )
+        self.assertEqual(validate_prediction(rec), [])
+
 
 class MetricUtilTests(unittest.TestCase):
     def test_accuracy(self):

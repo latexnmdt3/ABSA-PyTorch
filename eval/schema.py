@@ -87,24 +87,38 @@ def validate_prediction(rec: dict[str, Any]) -> list[str]:
         for f in REQUIRED_PAIR_FIELDS:
             if f not in pair:
                 errors.append(f"{side} missing field: {f}")
+
+        # The PARSE_ERROR_TOKEN is only ever a valid value on the *pred* side
+        # (when parse_ok=false). Gold labels must come from the normalised
+        # label space; otherwise corrupted gold data would silently distort
+        # metric computation. See SURVEY_SPEC.md §4.
+        allowed_sentiments = (
+            ALLOWED_SENTIMENTS if side == "pred"
+            else ALLOWED_SENTIMENTS - {PARSE_ERROR_TOKEN}
+        )
+        allowed_aspects = (
+            ALLOWED_VSFC_ASPECTS if side == "pred"
+            else ALLOWED_VSFC_ASPECTS - {PARSE_ERROR_TOKEN}
+        )
+
         sentiment = pair.get("sentiment")
-        if sentiment is not None and sentiment not in ALLOWED_SENTIMENTS:
+        if sentiment is not None and sentiment not in allowed_sentiments:
             errors.append(
                 f"{side}.sentiment invalid: {sentiment!r} "
-                f"(allowed: {sorted(ALLOWED_SENTIMENTS)})"
+                f"(allowed: {sorted(allowed_sentiments)})"
             )
         # Aspect-vocabulary constraint for UIT-VSFC.
         if dataset == "UIT-VSFC":
             aspect = pair.get("aspect")
-            if aspect is not None and aspect not in ALLOWED_VSFC_ASPECTS:
+            if aspect is not None and aspect not in allowed_aspects:
                 errors.append(
                     f"{side}.aspect invalid for UIT-VSFC: {aspect!r} "
-                    f"(allowed: {sorted(ALLOWED_VSFC_ASPECTS)})"
+                    f"(allowed: {sorted(allowed_aspects)})"
                 )
 
     parse_ok = rec.get("parse_ok")
-    if parse_ok is False:
-        pred = rec.get("pred", {}) or {}
+    pred = rec.get("pred")
+    if parse_ok is False and isinstance(pred, dict):
         if pred.get("aspect") != PARSE_ERROR_TOKEN:
             errors.append(
                 "parse_ok=false but pred.aspect must be '__PARSE_ERROR__'"
@@ -113,9 +127,11 @@ def validate_prediction(rec: dict[str, Any]) -> list[str]:
             errors.append(
                 "parse_ok=false but pred.sentiment must be '__PARSE_ERROR__'"
             )
-    elif parse_ok is True:
-        pred = rec.get("pred", {}) or {}
-        if pred.get("aspect") == PARSE_ERROR_TOKEN or pred.get("sentiment") == PARSE_ERROR_TOKEN:
+    elif parse_ok is True and isinstance(pred, dict):
+        if (
+            pred.get("aspect") == PARSE_ERROR_TOKEN
+            or pred.get("sentiment") == PARSE_ERROR_TOKEN
+        ):
             errors.append(
                 "parse_ok=true but pred contains '__PARSE_ERROR__' token"
             )
