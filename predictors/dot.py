@@ -6,17 +6,14 @@ Backbone VI: ``VietAI/vit5-base``
 
 DOT casts ABSA as a sequence-to-sequence problem; the target string contains
 both aspect and sentiment in a fixed format like ``"<aspect>: <sentiment>"``.
-This wrapper parses that format back to the canonical labels in SPEC §3.
+As of SPEC v1.1 the aspect is given as input, so this wrapper only needs to
+parse the sentiment back to the canonical labels in SPEC §3.
 """
 from __future__ import annotations
 
 import re
 
-from eval.schema import (
-    ALLOWED_SENTIMENTS,
-    ALLOWED_VSFC_ASPECTS,
-    PARSE_ERROR_TOKEN,
-)
+from eval.schema import ALLOWED_SENTIMENTS, PARSE_ERROR_TOKEN
 
 
 class DOTPredictor:
@@ -39,33 +36,26 @@ class DOTPredictor:
         self.num_beams = num_beams
         # TODO: load the seq2seq model & tokenizer (T5/ViT5).
 
-    def _build_input(self, text: str, aspect: str | None) -> str:
+    def _build_input(self, text: str, aspect: str) -> str:
         # TODO: match the exact prompt format used at training time.
-        if aspect is not None:
-            return f"absa | aspect: {aspect} | text: {text}"
-        return f"absa | text: {text}"
+        return f"absa | aspect: {aspect} | text: {text}"
 
     def predict(
         self, text: str, aspect: str | None = None
     ) -> tuple[str, str, str]:
         # TODO: encode prompt, generate, decode → raw_output.
         raw = "TODO: model output"
-        return self._parse(raw, gold_aspect=aspect)
+        return self._parse(raw, given_aspect=aspect or "")
 
     @staticmethod
-    def _parse(raw: str, gold_aspect: str | None) -> tuple[str, str, str]:
+    def _parse(raw: str, given_aspect: str) -> tuple[str, str, str]:
+        # SPEC v1.1: only the sentiment after the colon needs to validate
+        # against the canonical vocabulary; the aspect slot is echoed back
+        # and overwritten by the runner.
         m = re.match(r"\s*([^:]+?)\s*:\s*([a-zA-ZÀ-ỹ_]+)\s*$", raw)
         if not m:
             return PARSE_ERROR_TOKEN, PARSE_ERROR_TOKEN, raw
-        aspect_str, sentiment_str = m.group(1).strip().lower(), m.group(2).strip().lower()
-        if gold_aspect is not None:
-            # ATSC: only sentiment matters; aspect is echoed by the runner.
-            if sentiment_str not in ALLOWED_SENTIMENTS:
-                return PARSE_ERROR_TOKEN, PARSE_ERROR_TOKEN, raw
-            return gold_aspect, sentiment_str, raw
-        if (
-            aspect_str not in ALLOWED_VSFC_ASPECTS
-            or sentiment_str not in ALLOWED_SENTIMENTS
-        ):
+        sentiment_str = m.group(2).strip().lower()
+        if sentiment_str not in ALLOWED_SENTIMENTS:
             return PARSE_ERROR_TOKEN, PARSE_ERROR_TOKEN, raw
-        return aspect_str, sentiment_str, raw
+        return given_aspect, sentiment_str, raw

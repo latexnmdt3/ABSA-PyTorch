@@ -306,7 +306,10 @@ def run_evaluation(
     if warmup_n > 0:
         _warmup_fn = getattr(predictor, "warmup", None)
         for sample in samples[:warmup_n]:
-            aspect_arg = sample.gold_aspect if task == "ATSC" else None
+            # As of SPEC v1.1 the aspect/topic is always given as input for
+            # both ATSC (SemEval aspect term) and ACSA (UIT-VSFC topic). The
+            # model only predicts sentiment.
+            aspect_arg = sample.gold_aspect
             if callable(_warmup_fn):
                 _warmup_fn(sample.text)
             else:
@@ -319,7 +322,7 @@ def run_evaluation(
 
     with pred_path.open("w", encoding="utf-8") as fh:
         for i, sample in enumerate(samples, start=1):
-            aspect_arg = sample.gold_aspect if task == "ATSC" else None
+            aspect_arg = sample.gold_aspect
             try:
                 pa, ps, raw, latency_ms = _timed_predict(
                     predictor, sample.text, aspect_arg
@@ -341,10 +344,10 @@ def run_evaluation(
             # token when parse_ok is false.
             if not parse_ok:
                 pa, ps = PARSE_ERROR, PARSE_ERROR
-            # ATSC: model must echo the gold aspect; if it didn't, force it
-            # back so the aspect column doesn't pollute the join metric (the
-            # gold aspect is given by the task definition).
-            if task == "ATSC" and parse_ok:
+            # The aspect/topic is given by the task definition (SPEC v1.1),
+            # so the model is not trusted to predict it: force pred.aspect
+            # back to gold whenever parsing succeeded.
+            if parse_ok:
                 pa = sample.gold_aspect
             rec = _make_record(sample, predictor, pa, ps, raw, parse_ok, latency_ms)
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")

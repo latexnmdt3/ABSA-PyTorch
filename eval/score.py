@@ -1,10 +1,13 @@
 """Single evaluator for the ABSA survey.
 
 Reads a JSONL prediction file produced by any method, validates it against
-the schema in :mod:`eval.schema`, computes the canonical metrics (accuracy,
-macro-F1, per-class F1, parse-failure rate, and — for ACSA — aspect metrics
-plus joint accuracy), optionally merges an external ``efficiency.json``
-block, and writes the resulting metrics JSON to disk.
+the schema in :mod:`eval.schema`, computes the canonical metrics (sentiment
+accuracy, macro-F1, per-class F1, parse-failure rate), optionally merges
+an external ``efficiency.json`` block, and writes the resulting metrics
+JSON to disk.
+
+As of SPEC v1.1 the aspect/topic is given as input for both ATSC and
+ACSA, so this evaluator only scores sentiment.
 
 Use this script (and only this script) to score every method's predictions —
 see ``docs/SURVEY_SPEC.md`` §6.
@@ -117,11 +120,11 @@ def score_predictions(predictions_path: str | Path) -> dict[str, Any]:
         "parse_failure_rate": parse_fail / n,
     }
 
+    # As of SPEC v1.1 the aspect/topic is given as input for both tasks, so
+    # we still sanity-check the gold UIT-VSFC topic vocabulary but do not
+    # produce aspect or joint metrics.
     if task == "ACSA":
         asp_true = [s["gold"]["aspect"] for s in samples]
-        asp_pred = [s["pred"]["aspect"] for s in samples]
-
-        # Sanity check gold aspect vocabulary for UIT-VSFC.
         bad_gold = {a for a in asp_true if a not in ALLOWED_VSFC_ASPECTS} - {
             PARSE_ERROR_TOKEN
         }
@@ -129,18 +132,6 @@ def score_predictions(predictions_path: str | Path) -> dict[str, Any]:
             raise ValueError(
                 f"gold aspect labels outside the UIT-VSFC vocabulary: {sorted(bad_gold)}"
             )
-
-        metrics["aspect"] = {
-            "accuracy": _accuracy(asp_true, asp_pred),
-            "macro_f1": _macro_f1(asp_true, asp_pred, VSFC_ASPECT_LABELS),
-            "f1_per_class": _f1_per_class(asp_true, asp_pred, VSFC_ASPECT_LABELS),
-        }
-        metrics["joint_aspect_sentiment_acc"] = sum(
-            1
-            for s in samples
-            if s["gold"]["aspect"] == s["pred"]["aspect"]
-            and s["gold"]["sentiment"] == s["pred"]["sentiment"]
-        ) / n
 
     return metrics
 

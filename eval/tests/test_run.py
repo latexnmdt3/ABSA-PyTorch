@@ -155,8 +155,9 @@ class RunEvaluationVSFCTests(unittest.TestCase):
         self.assertEqual(metrics["method"], "Fake-Perfect")
         self.assertEqual(metrics["n_samples"], 8)
         self.assertAlmostEqual(metrics["sentiment"]["accuracy"], 1.0)
-        self.assertAlmostEqual(metrics["aspect"]["accuracy"], 1.0)
-        self.assertAlmostEqual(metrics["joint_aspect_sentiment_acc"], 1.0)
+        # SPEC v1.1: topic given as input → no aspect block / joint metric.
+        self.assertNotIn("aspect", metrics)
+        self.assertNotIn("joint_aspect_sentiment_acc", metrics)
         self.assertEqual(metrics["parse_failure_rate"], 0.0)
 
         # Efficiency block populated by the runner.
@@ -217,7 +218,6 @@ class RunEvaluationVSFCTests(unittest.TestCase):
         # as parse failures.
         self.assertAlmostEqual(metrics["parse_failure_rate"], 1.0)
         self.assertAlmostEqual(metrics["sentiment"]["accuracy"], 0.0)
-        self.assertAlmostEqual(metrics["aspect"]["accuracy"], 0.0)
 
         # All written records must have BOTH pred fields normalised.
         pred_path = self.outdir / "predictions" / "fake_partial_vsfc.jsonl"
