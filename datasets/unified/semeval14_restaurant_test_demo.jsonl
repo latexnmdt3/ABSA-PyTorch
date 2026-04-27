@@ -1,0 +1,4 @@
+{"id": "semeval14_rest_test_00001", "dataset": "SemEval-2014-Restaurant", "language": "en", "task": "ATSC", "text": "The pizza was delicious but the service was terrible.", "gold": {"aspect": "pizza", "sentiment": "positive"}}
+{"id": "semeval14_rest_test_00002", "dataset": "SemEval-2014-Restaurant", "language": "en", "task": "ATSC", "text": "The pizza was delicious but the service was terrible.", "gold": {"aspect": "service", "sentiment": "negative"}}
+{"id": "semeval14_rest_test_00003", "dataset": "SemEval-2014-Restaurant", "language": "en", "task": "ATSC", "text": "Food was OK, nothing special.", "gold": {"aspect": "Food", "sentiment": "neutral"}}
+{"id": "semeval14_rest_test_00004", "dataset": "SemEval-2014-Restaurant", "language": "en", "task": "ATSC", "text": "The atmosphere is romantic and cozy.", "gold": {"aspect": "atmosphere", "sentiment": "positive"}}
