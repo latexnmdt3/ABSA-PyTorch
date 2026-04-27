@@ -1,0 +1,8 @@
+{"id": "vsfc_test_00001", "dataset": "UIT-VSFC", "language": "vi", "task": "ACSA", "text": "Giảng viên dạy rất nhiệt tình và dễ hiểu.", "gold": {"aspect": "lecturer", "sentiment": "positive"}}
+{"id": "vsfc_test_00002", "dataset": "UIT-VSFC", "language": "vi", "task": "ACSA", "text": "Phòng học máy lạnh hỏng liên tục.", "gold": {"aspect": "facility", "sentiment": "negative"}}
+{"id": "vsfc_test_00003", "dataset": "UIT-VSFC", "language": "vi", "task": "ACSA", "text": "Chương trình đào tạo còn ổn.", "gold": {"aspect": "training_program", "sentiment": "neutral"}}
+{"id": "vsfc_test_00004", "dataset": "UIT-VSFC", "language": "vi", "task": "ACSA", "text": "Trường nên cải thiện wifi.", "gold": {"aspect": "facility", "sentiment": "negative"}}
+{"id": "vsfc_test_00005", "dataset": "UIT-VSFC", "language": "vi", "task": "ACSA", "text": "Bài giảng rõ ràng, sinh động.", "gold": {"aspect": "lecturer", "sentiment": "positive"}}
+{"id": "vsfc_test_00006", "dataset": "UIT-VSFC", "language": "vi", "task": "ACSA", "text": "Tài liệu hơi cũ.", "gold": {"aspect": "training_program", "sentiment": "negative"}}
+{"id": "vsfc_test_00007", "dataset": "UIT-VSFC", "language": "vi", "task": "ACSA", "text": "Không có ý kiến gì khác.", "gold": {"aspect": "others", "sentiment": "neutral"}}
+{"id": "vsfc_test_00008", "dataset": "UIT-VSFC", "language": "vi", "task": "ACSA", "text": "Thầy nhiệt tình giải đáp thắc mắc.", "gold": {"aspect": "lecturer", "sentiment": "positive"}}

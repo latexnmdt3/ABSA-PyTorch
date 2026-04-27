@@ -154,13 +154,65 @@ Notes:
   supported merge mechanism.
 - `config.setting` must be `fine-tuned` for every entry in the survey tables.
 
-## 6. The single evaluator
+## 6. The single evaluator and runner
 
-To prevent each method computing its own metrics with a slightly different
-formula, **only one evaluator is allowed**:
+There are **two scripts**, depending on whether you produce predictions
+inside or outside the runner.
 
+### 6.1 `evaluate.py` (recommended) — runner with built-in timing
+
+`evaluate.py` at the repo root is what every teammate runs. It:
+
+1. Loads the unified test JSONL (§4).
+2. Wraps your model behind the :class:`Predictor` protocol.
+3. Times each `predict()` call (mean / median / p95 / std / throughput).
+4. Tracks peak GPU memory (`torch.cuda.max_memory_allocated`) if CUDA is
+   available.
+5. Validates the resulting predictions file against `eval/schema.py`.
+6. Computes the metrics defined in §5 via `eval/score.py`.
+7. Writes both `results/predictions/{method}_{dataset}.jsonl` and
+   `results/metrics/{method}_{dataset}.json` — already merged with the
+   `efficiency` block.
+
+Each teammate only writes a small wrapper class, e.g. `predictors/dot.py`:
+
+```python
+class DOTPredictor:
+    method   = "DOT"
+    paradigm = "Generative-Seq2Seq"
+    backbone = "VietAI/vit5-base"
+
+    def __init__(self, ckpt_path):
+        ...  # load model
+
+    def predict(self, text, aspect=None) -> tuple[str, str, str]:
+        # return (pred_aspect, pred_sentiment, raw_output)
+        ...
 ```
-python eval/score.py \
+
+Then run:
+
+```bash
+python evaluate.py \
+    --predictor   predictors.dot:DOTPredictor \
+    --predictor-kwargs '{"ckpt_path": "state_dict/dot_vsfc.pt"}' \
+    --test-set    datasets/unified/uit_vsfc_test.jsonl \
+    --output-dir  results/ \
+    --warmup 5 \
+    --params-million 247 \
+    --training-hours 2.1
+```
+
+Skeleton wrappers for all 5 methods live in `predictors/` — they have
+`TODO` markers where the model loading and inference go.
+
+### 6.2 `eval/score.py` (post-hoc) — score an existing predictions file
+
+If you have already produced a predictions JSONL by some other means, you
+can score it directly:
+
+```bash
+python -m eval.score \
     --predictions results/predictions/dot_vsfc.jsonl \
     --output      results/metrics/dot_vsfc.json \
     --efficiency  results/efficiency/dot_vsfc.json
@@ -169,10 +221,12 @@ python eval/score.py \
 `eval/score.py` reads predictions, computes accuracy / macro-F1 /
 per-class-F1 / parse-failure-rate / (for ACSA) aspect metrics and joint
 accuracy, optionally merges in an efficiency block, and writes the final
-metrics file. Method authors **must not** compute these numbers themselves.
+metrics file. Method authors **must not** compute these numbers
+themselves.
 
 `eval/schema.py` provides `validate_predictions_file(path)` and is run by
-`score.py` before scoring. Any schema violation is a hard error.
+both `score.py` and `evaluate.py` before scoring. Any schema violation is
+a hard error.
 
 ## 7. Final comparison tables
 
@@ -214,10 +268,21 @@ results/
 ├── tables/        # accuracy.md, efficiency.md
 └── figures/       # tradeoff_{dataset}.png
 
+evaluate.py        # standalone runner (recommended entry-point)
+
 eval/
 ├── schema.py      # validation of prediction records
-├── score.py       # the single evaluator
+├── score.py       # the single evaluator (post-hoc scoring)
 └── tests/         # smoke tests (stdlib unittest)
+
+predictors/        # one wrapper per method (TODO skeletons today)
+├── lcf_bert.py
+├── instructabsa.py
+├── ssin.py
+├── dot.py
+└── llm_reasoning.py
+
+datasets/unified/  # team-shared test JSONL files (the same file across 5 runs)
 ```
 
 Files under `results/` are not committed; only the schemas, evaluator and
