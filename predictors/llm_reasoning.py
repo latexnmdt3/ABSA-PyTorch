@@ -5,23 +5,21 @@ Backbone EN: ``meta-llama/Llama-3-8B``
 Backbone VI: ``SeaLLMs/SeaLLM-7B-v2``
 
 The model is fine-tuned with QLoRA and prompted to emit a short reasoning
-chain followed by a final ``Answer: <aspect>: <sentiment>`` line. We extract
-the answer line and discard the reasoning. Per SPEC decision #4 the model
-must be fine-tuned (no zero/few-shot rows in the comparison).
+chain followed by a final ``Answer: <sentiment>`` line. We extract the
+answer line and discard the reasoning. As of SPEC v1.1 the aspect/topic is
+given as input, so the model only needs to emit a sentiment label. Per SPEC
+decision #4 the model must be fine-tuned (no zero/few-shot rows in the
+comparison).
 """
 from __future__ import annotations
 
 import re
 
-from eval.schema import (
-    ALLOWED_SENTIMENTS,
-    ALLOWED_VSFC_ASPECTS,
-    PARSE_ERROR_TOKEN,
-)
+from eval.schema import ALLOWED_SENTIMENTS, PARSE_ERROR_TOKEN
 
-
+# Tolerate either ``Answer: positive`` or the older ``Answer: aspect: sentiment``.
 _ANSWER_RE = re.compile(
-    r"answer\s*:\s*([^:\n]+?)\s*:\s*([a-zA-ZÀ-ỹ_]+)",
+    r"answer\s*:\s*(?:[^:\n]+?\s*:\s*)?([a-zA-ZÀ-ỹ_]+)",
     flags=re.IGNORECASE,
 )
 
@@ -46,17 +44,11 @@ class LLMReasoningPredictor:
         self.temperature = temperature
         # TODO: load the base model + apply QLoRA adapter from ckpt_path.
 
-    def _build_prompt(self, text: str, aspect: str | None) -> str:
+    def _build_prompt(self, text: str, aspect: str) -> str:
         # TODO: match the exact CoT prompt template used during fine-tuning.
-        if aspect is not None:
-            return (
-                "Reason step-by-step about the sentiment expressed toward the "
-                f"aspect '{aspect}' in this text, then answer.\n"
-                f"Text: {text}\nAnswer:"
-            )
         return (
-            "Identify the single topic and sentiment of this Vietnamese "
-            "feedback sentence. Reason step-by-step then output one line:\n"
+            "Reason step-by-step about the sentiment expressed toward the "
+            f"aspect '{aspect}' in this text, then answer.\n"
             f"Text: {text}\nAnswer:"
         )
 
@@ -65,22 +57,15 @@ class LLMReasoningPredictor:
     ) -> tuple[str, str, str]:
         # TODO: model.generate(...) → raw_output (full CoT + answer line).
         raw = "TODO: model output"
-        return self._parse(raw, gold_aspect=aspect)
+        return self._parse(raw, given_aspect=aspect or "")
 
     @staticmethod
-    def _parse(raw: str, gold_aspect: str | None) -> tuple[str, str, str]:
+    def _parse(raw: str, given_aspect: str) -> tuple[str, str, str]:
+        # SPEC v1.1: only sentiment is needed.
         m = _ANSWER_RE.search(raw)
         if not m:
             return PARSE_ERROR_TOKEN, PARSE_ERROR_TOKEN, raw
-        aspect_str = m.group(1).strip().lower().replace(" ", "_")
-        sentiment_str = m.group(2).strip().lower()
-        if gold_aspect is not None:
-            if sentiment_str not in ALLOWED_SENTIMENTS:
-                return PARSE_ERROR_TOKEN, PARSE_ERROR_TOKEN, raw
-            return gold_aspect, sentiment_str, raw
-        if (
-            aspect_str not in ALLOWED_VSFC_ASPECTS
-            or sentiment_str not in ALLOWED_SENTIMENTS
-        ):
+        sentiment_str = m.group(1).strip().lower()
+        if sentiment_str not in ALLOWED_SENTIMENTS:
             return PARSE_ERROR_TOKEN, PARSE_ERROR_TOKEN, raw
-        return aspect_str, sentiment_str, raw
+        return given_aspect, sentiment_str, raw
